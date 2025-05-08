@@ -1,0 +1,13 @@
+float sum;
+int a=5;
+int b=8;
+float x=2.0;
+sum= (a + b) * x;
+string msg="Enter a float";
+input(x,float);
+sum=sum+x;
+if(sum>8){
+output(sum,float);
+}else{
+    sum=sum+5;
+}
