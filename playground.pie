@@ -1,0 +1,41 @@
+
+int userInput=0;
+int starting_timestamp=time_now();
+int duration=20; // seconds
+int end_timestamp=starting_timestamp+duration;
+// while(userInput<=3){
+//     output("Select an option:", string);
+//     output("1. Show compilation timestamp", string);
+//     output("2. Show local time", string);
+//     output("3. Show both", string);
+//     input(userInput, int);
+//     int timestamp=time_now();
+//     string localTime=time_to_local(timestamp);
+//     if(userInput==1){
+//         output("Compilation started at: " + timestamp, string);
+//     }else if(userInput==2){
+//         output("Local time: " + localTime, string);
+//     }else{
+//         output("Compilation started at: " + timestamp, string);
+//         output("Local time: " + localTime, string);
+//     }
+// }
+
+// while(time_now()<end_timestamp){
+//     int timestamp=time_now();
+//     string localTime=time_to_local(timestamp);
+//     output("Current timestamp: " + timestamp, string);
+//     output("Local time: " + localTime, string);
+//     sleep(1); // Sleep for 1 second before next update
+// }
+
+//test countdown
+
+output("Countdown starting from 5:", string);
+int count=5;
+while(count>0){
+    output(count, int);
+    sleep(1);
+    count=count-1;
+}
+output("Go!", string);

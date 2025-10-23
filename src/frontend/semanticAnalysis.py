@@ -42,9 +42,13 @@ class SemanticAnalyzer(Visitor):
         self.symbol_table.add_symbol(node.identifier, var_type_name, is_initialized=is_initialized)
 
         if node.initializer:
+            # Store expected type for dict_get type inference
+            old_expected_type = getattr(self, 'expected_type', None)
+            self.expected_type = var_type_name
             expr_type = self.visit(node.initializer)
             if expr_type and not self.type_checker.is_compatible(var_type_name, expr_type):
                 self.add_error(f"Type mismatch in declaration: Cannot assign {expr_type} to {var_type_name} variable '{node.identifier}'")
+            self.expected_type = old_expected_type
         return None
 
     def visit_arraydeclaration(self, node):
@@ -233,6 +237,99 @@ class SemanticAnalyzer(Visitor):
     def visit_functioncall(self, node):
         if node.name.startswith('arr_'):
             return self.visit_array_function_call(node)
+        
+        # Special handling for dict_get with type inference
+
+        if node.name == 'dict_get':
+
+            # Validate arguments
+
+            if len(node.args) != 2:
+
+                self.add_error(f"dict_get requires 2 arguments (dict, key), got {len(node.args)}")
+
+                return None
+
+ 
+
+            # Check argument types
+
+            dict_type = self.visit(node.args[0])
+
+            key_type = self.visit(node.args[1])
+
+ 
+
+            if dict_type != 'KEYWORD_DICT' and dict_type != 'dict':
+
+                self.add_error(f"First argument to dict_get must be a dict, got {dict_type}")
+
+            if key_type != 'KEYWORD_STRING' and key_type != 'string':
+
+                self.add_error(f"Second argument to dict_get must be a string, got {key_type}")
+
+ 
+
+            # Return type based on context (expected_type from declaration/assignment)
+
+            expected = getattr(self, 'expected_type', None)
+
+            if expected:
+
+                # Store the inferred type on the node for code generation
+
+                node.inferred_return_type = expected
+
+                return expected
+
+            else:
+
+                # Default to void* if no context
+
+                return 'void*'
+
+ 
+
+        # Special handling for dict_set with type inference
+
+        if node.name == 'dict_set':
+
+            # Validate arguments
+
+            if len(node.args) != 3:
+
+                self.add_error(f"dict_set requires 3 arguments (dict, key, value), got {len(node.args)}")
+
+                return 'void'
+
+ 
+
+            # Check argument types
+
+            dict_type = self.visit(node.args[0])
+
+            key_type = self.visit(node.args[1])
+
+            value_type = self.visit(node.args[2])
+
+ 
+
+            if dict_type != 'KEYWORD_DICT' and dict_type != 'dict':
+
+                self.add_error(f"First argument to dict_set must be a dict, got {dict_type}")
+
+            if key_type != 'KEYWORD_STRING' and key_type != 'string':
+
+                self.add_error(f"Second argument to dict_set must be a string, got {key_type}")
+
+ 
+
+            # Store the value type on the node for code generation
+
+            node.value_type = value_type
+
+            return 'void'
+
         function_symbol = self.symbol_table.lookup_function(node.name)
         if not function_symbol:
             # Could be a system call, handle separately
@@ -262,7 +359,12 @@ class SemanticAnalyzer(Visitor):
 
     def visit_assignment(self, node):
         lhs_type = self.visit(node.lhs)
+        # Store expected type for dict_get type inference
+        old_expected_type = getattr(self, 'expected_type', None)
+        self.expected_type = lhs_type
         expr_type = self.visit(node.rhs)
+        # Restore previous expected type
+        self.expected_type = old_expected_type
 
         if isinstance(node.lhs, SubscriptAccess):
             symbol = self.symbol_table.lookup_symbol(node.lhs.name)
@@ -483,6 +585,13 @@ class SemanticAnalyzer(Visitor):
         return None
 
     def visit_systemexit(self, node):
+        return None
+
+    def visit_systemsleep(self, node):
+        # Check that the duration expression is an integer
+        duration_type = self.visit(node.duration)
+        if duration_type and duration_type != 'KEYWORD_INT':
+            self.add_error(f"sleep() expects an integer argument, got {duration_type}")
         return None
 
     def visit_returnstatement(self, node):

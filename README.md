@@ -31,7 +31,8 @@ A compiler for the PIE programming language, supporting parsing, semantic analys
 
 ### 📚 Documentation
 - **[Complete Documentation](docs/README.md)** - Comprehensive guide to all PIE features
-- **[String Comparisons](docs/string_comparisons.md)** - String operations and utilities ⭐ **NEW!**
+- **[String Comparisons](docs/string_comparisons.md)** - String operations and utilities
+- **[Advanced String Utilities](docs/advanced_string_utilities.md)** - Advanced string manipulation functions ⭐ **NEW!**
 - **[Quick Reference](docs/string_quick_reference.md)** - String comparison cheat sheet
 
 ### 1. Basic Language Structure
@@ -174,16 +175,54 @@ int main() {
 
 ### 8. Dictionaries
 
-PIE supports dictionaries (hash maps) with string keys.
+PIE supports dictionaries (hash maps) with string keys and **automatic type inference**. ⭐ **NEW!**
+
+ 
+
+**New Syntax (Recommended):**
+
+```pie
+
+// Create dictionary with mixed types
+
+dict person = {"name": "John Doe", "age": 30, "city": "New York"};
+
+ 
+
+// Get values - type is automatically inferred
+
+string name = dict_get(person, "name");
+
+int age = dict_get(person, "age");
+
+string city = dict_get(person, "city");
+
+ 
+
+// Set values - type is automatically inferred
+
+dict_set(person, "age", 31);
+
+dict_set(person, "city", "Nairobi");
+
+```
 
 **Syntax:**
+
+**Old Syntax (Still Supported):**
+
 ```pie
+
 dict myDict = dict_create();
+
 dict_set(myDict, "name", new_string("Jules"));
-dict_set(myDict, "age", new_int(30));
+
+...
 
 string name = dict_get_string(myDict, "name");
+
 int age = dict_get_int(myDict, "age");
+
 ```
 
 ### 9. String Operations
@@ -271,11 +310,47 @@ file_close(readFile);
 ```
 
 #### String Utility Functions
+
+**Basic String Functions:**
 ```pie
 int strlen(string s);                    // Get string length
 int strcmp(string s1, string s2);       // Compare strings
 string strcpy(string dest, string src); // Copy string
 string strcat(string dest, string src); // Concatenate strings
+```
+
+**Advanced String Utilities:** ⭐ **NEW!**
+```pie
+// Case conversion
+string string_to_upper(string str);     // Convert to uppercase
+string string_to_lower(string str);     // Convert to lowercase
+
+// String manipulation
+string string_trim(string str);         // Remove leading/trailing whitespace
+string string_substring(string str, int start, int length); // Extract substring
+string string_reverse(string str);      // Reverse string
+
+// String searching
+int string_index_of(string haystack, string needle); // Find substring position
+int string_contains(string haystack, string needle); // Check if contains substring
+int string_starts_with(string str, string prefix);   // Check if starts with prefix
+int string_ends_with(string str, string suffix);     // Check if ends with suffix
+
+// Character operations
+string string_replace_char(string str, char old, char new); // Replace character
+int string_count_char(string str, char ch);         // Count character occurrences
+int string_is_empty(string str);                    // Check if string is empty
+```
+
+**Example:**
+```pie
+string text = "  Hello World  ";
+string trimmed = string_trim(text);
+string upper = string_to_upper(trimmed);
+output(upper, string);  // Output: HELLO WORLD
+
+string sub = string_substring(upper, 0, 5);
+output(sub, string);  // Output: HELLO
 ```
 
 #### Network Library
@@ -286,6 +361,96 @@ int tcp_send(socket sock, string data);       // Send data
 int tcp_recv(socket sock, string buffer, int size);  // Receive data
 void tcp_close(socket sock);                  // Close socket
 ```
+
+### 10. Regular Expressions
+
+ 
+
+PIE supports **regular expressions** with Kleene syntax and NFA-based matching. ⭐ **NEW!**
+
+ 
+
+**Basic Usage:**
+
+```pie
+
+// Compile a regex pattern
+
+regex pattern = regex_compile("a+.b*");
+
+ 
+
+// Match strings against the pattern
+
+int result = regex_match(pattern, "aabb");
+
+if (result == 1) {
+
+    output("Match found!", string);
+
+}
+
+```
+
+ 
+
+**Operators:**
+
+- **Literals**: `a`, `b`, `1`, etc.
+
+- **Concatenation** (`.`): `a.b` matches `"ab"`
+
+- **OR** (`|`): `a|b` matches `"a"` or `"b"`
+
+- **Kleene Star** (`*`): `a*` matches zero or more `a`'s
+
+- **Positive Closure** (`+`): `a+` matches one or more `a`'s
+
+- **Grouping** (`()`): `(a|b).c` matches `"ac"` or `"bc"`
+
+ 
+
+**Length Constraints:**
+
+- **Exact** (`:n`): `a+:3` matches exactly 3 characters
+
+- **Minimum** (`>n`): `a+>2` matches more than 2 characters
+
+- **Maximum** (`<n`): `a+<5` matches fewer than 5 characters
+
+- **Range** (`>n<m`): `a+>2<6` matches 3-5 characters
+
+ 
+
+**Common Patterns:**
+
+```pie
+
+// Email validation (simplified)
+
+regex email = regex_compile("(a|b|c|...|z|0|1|2|...|9)+.@.(a|b|c|...|z)+>8");
+
+ 
+
+// Phone number (exactly 10 digits)
+
+regex phone = regex_compile("(0|1|2|3|4|5|6|7|8|9)+:10");
+
+ 
+
+// Password (8+ characters)
+
+regex password = regex_compile("(a|b|c|...|z|A|B|C|...|Z|0|1|2|...|9)+>7");
+
+```
+
+ 
+
+See [Regex Specification](docs/regex_specification.md) for complete documentation.
+
+ 
+
+### 11. Standard Library
 
 ### 11. Example Programs
 
@@ -399,3 +564,4 @@ output(result, float, 3);
 1. **Write your PIE program** (e.g., `test.pie`).
 2. **Run the compiler:** `python3 main.py`
 3. **Run your program:** `./program`
+

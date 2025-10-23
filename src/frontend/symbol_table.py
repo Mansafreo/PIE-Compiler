@@ -147,6 +147,9 @@ class TypeChecker:
         if op in ['PLUS','MINUS','MUL','DIV','MOD']:
             if op=='PLUS' and l=='KEYWORD_STRING' and r=='KEYWORD_STRING':
                 return 'KEYWORD_STRING'
+            # Allow string concatenation with any type (auto-convert to string)
+            if op=='PLUS' and (l=='KEYWORD_STRING' or r=='KEYWORD_STRING'):
+                return 'KEYWORD_STRING'
             if l in ['KEYWORD_INT','KEYWORD_FLOAT'] and r in ['KEYWORD_INT','KEYWORD_FLOAT']:
                 if op=='DIV':
                     return 'KEYWORD_FLOAT'

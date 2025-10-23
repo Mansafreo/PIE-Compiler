@@ -14,13 +14,13 @@ class Parser:
             'IDENTIFIER', 'INT_LITERAL', 'FLOAT_LITERAL', 'STRING_LITERAL', 'CHAR_LITERAL',
             'KEYWORD_IF', 'KEYWORD_ELSE', 'KEYWORD_FOR', 'KEYWORD_WHILE', 'KEYWORD_DO',
             'KEYWORD_RETURN', 'KEYWORD_BREAK', 'KEYWORD_CONTINUE', 'KEYWORD_SWITCH', 'KEYWORD_CASE', 'KEYWORD_DEFAULT',
-            'KEYWORD_INT', 'KEYWORD_FLOAT', 'KEYWORD_CHAR', 'KEYWORD_VOID', 'KEYWORD_FILE', 'KEYWORD_SOCKET', 'KEYWORD_DICT',
+            'KEYWORD_INT', 'KEYWORD_FLOAT', 'KEYWORD_CHAR', 'KEYWORD_VOID', 'KEYWORD_FILE', 'KEYWORD_SOCKET', 'KEYWORD_DICT','KEYWORD_REGEX',
             'KEYWORD_STRING', 'KEYWORD_BOOL', 'KEYWORD_TRUE', 'KEYWORD_FALSE', 'KEYWORD_NULL', 'KEYWORD_EXIT', 'KEYWORD_ARRAY',
             'LPAREN', 'RPAREN', 'LBRACE', 'RBRACE', 'LBRACKET', 'RBRACKET',
             'SEMICOLON', 'COMMA', 'DOT', 'COLON',
             'PLUS', 'MINUS', 'MUL', 'DIV', 'MOD',
             'GT', 'LT', 'GEQ', 'LEQ', 'EQ', 'NEQ', 'AND', 'OR', 'ASSIGN',
-            'SYSTEM_INPUT', 'SYSTEM_OUTPUT', 'SYSTEM_EXIT', 'COMMENT',
+            'SYSTEM_INPUT', 'SYSTEM_OUTPUT', 'SYSTEM_EXIT', 'SYSTEM_SLEEP', 'COMMENT',
             'SYSTEM_ARR_PUSH', 'SYSTEM_ARR_POP', 'SYSTEM_ARR_SIZE', 'SYSTEM_ARR_CONTAINS', 'SYSTEM_ARR_INDEXOF', 'SYSTEM_ARR_AVG'
         ]
         
@@ -80,11 +80,35 @@ class Parser:
                 params=info['params']
             )
 
+        time_functions = {
+            "time_now": {"return_type": "int", "params": []},
+            "time_to_local": {"return_type": "string", "params": [("int", "timestamp")]},
+        }
+        for name, info in time_functions.items():
+            param_types = [p[0] for p in info['params']]
+            self.symbol_table.add_symbol(
+                name,
+                'function',
+                return_type=info['return_type'],
+                param_types=param_types,
+                params=info['params']
+            )
+
         string_functions = {
             "strlen": {"return_type": "int", "params": [("string", "s")]},
             "strcmp": {"return_type": "int", "params": [("string", "s1"), ("string", "s2")]},
             "strcpy": {"return_type": "string", "params": [("string", "dest"), ("string", "src")]},
             "strcat": {"return_type": "string", "params": [("string", "dest"), ("string", "src")]},
+            "concat_strings": {"return_type": "string", "params": [("string", "s1"), ("string", "s2")]},
+            # Advanced string utilities
+            "string_to_upper": {"return_type": "string", "params": [("string", "str")]},
+            "string_to_lower": {"return_type": "string", "params": [("string", "str")]},
+            "string_trim": {"return_type": "string", "params": [("string", "str")]},
+            "string_substring": {"return_type": "string", "params": [("string", "str"), ("int", "start"), ("int", "length")]},
+            "string_index_of": {"return_type": "int", "params": [("string", "haystack"), ("string", "needle")]},
+            "string_replace_char": {"return_type": "string", "params": [("string", "str"), ("char", "old_char"), ("char", "new_char")]},
+            "string_reverse": {"return_type": "string", "params": [("string", "str")]},
+            "string_count_char": {"return_type": "int", "params": [("string", "str"), ("char", "ch")]},
         }
         for name, info in string_functions.items():
             param_types = [p[0] for p in info['params']]
@@ -146,7 +170,37 @@ class Parser:
                 param_types=param_types,
                 params=info['params']
             )
+        # Regex functions
 
+        regex_functions = {
+
+            "regex_compile": {"return_type": "regex", "params": [("string", "pattern")]},
+
+            "regex_match": {"return_type": "int", "params": [("regex", "pattern"), ("string", "str")]},
+
+            "regex_free": {"return_type": "void", "params": [("regex", "pattern")]},
+
+        }
+
+        for name, info in regex_functions.items():
+
+            param_types = [p[0] for p in info['params']]
+
+            self.symbol_table.add_symbol(
+
+                name,
+
+                'function',
+
+                return_type=info['return_type'],
+
+                param_types=param_types,
+
+                params=info['params']
+
+            )
+
+ 
 
         d_array_string_functions = {
             "d_array_string_create": {"return_type": "d_array_string", "params": []},
@@ -413,6 +467,7 @@ class Parser:
                           | KEYWORD_FILE
                           | KEYWORD_SOCKET
                           | KEYWORD_DICT
+                          | KEYWORD_REGEX
                           | KEYWORD_ARRAY'''
         base = canonicalize(p[1])
         p[0] = TypeSpecifier(base)
@@ -501,6 +556,7 @@ class Parser:
                         | SYSTEM_OUTPUT LPAREN expression COMMA type_specifier RPAREN
                         | SYSTEM_OUTPUT LPAREN expression COMMA type_specifier COMMA expression RPAREN
                         | KEYWORD_EXIT LPAREN RPAREN
+                        | SYSTEM_SLEEP LPAREN expression RPAREN
                         | SYSTEM_ARR_PUSH LPAREN expression COMMA expression RPAREN
                         | SYSTEM_ARR_POP LPAREN expression RPAREN
                         | SYSTEM_ARR_SIZE LPAREN expression RPAREN
@@ -516,6 +572,8 @@ class Parser:
             p[0] = SystemOutput(p[3], p[5], precision)
         elif slice_type == 'KEYWORD_EXIT':
             p[0] = SystemExit()
+        elif slice_type == 'SYSTEM_SLEEP':
+            p[0] = SystemSleep(p[3])
         elif slice_type == 'SYSTEM_ARR_PUSH':
             p[0] = ArrayPush(p[3], p[5])
         elif slice_type == 'SYSTEM_ARR_POP':

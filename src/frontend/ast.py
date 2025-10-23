@@ -158,6 +158,11 @@ class SystemExit(FunctionCall):
     def __init__(self):
         super().__init__('exit', [])
 
+class SystemSleep(FunctionCall):
+    def __init__(self, duration):
+        super().__init__('sleep', [duration])
+        self.duration = duration
+
 # Array Functions
 class ArrayPush(FunctionCall):
     def __init__(self, array, value):

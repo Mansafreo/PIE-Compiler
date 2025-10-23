@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <unistd.h>
+#endif
 
 // Input function for float (language 'float' mapped to double in LLVM)
 void input_float(double *ptr) {
@@ -99,7 +104,48 @@ char* concat_strings(const char* s1, const char* s2) {
     }
     return result;
 }
+
+// Type-to-string conversion functions
+char* int_to_string(int value) {
+    // Allocate enough space for the string representation
+    // Max int is 10 digits + sign + null terminator
+    char* result = (char*)malloc(12);
+    if (result) {
+        snprintf(result, 12, "%d", value);
+    }
+    return result;
+}
+
+char* float_to_string(double value) {
+    // Allocate enough space for the string representation
+    char* result = (char*)malloc(32);
+    if (result) {
+        snprintf(result, 32, "%g", value);
+    }
+    return result;
+}
+
+char* char_to_string(char value) {
+    // Allocate space for single char + null terminator
+    char* result = (char*)malloc(2);
+    if (result) {
+        result[0] = value;
+        result[1] = '\0';
+    }
+    return result;
+}
 // Exit function
 void exit_program() {
     exit(0);
+}
+
+// Sleep function - sleeps for specified number of seconds
+void pie_sleep(int seconds) {
+    if (seconds > 0) {
+        #ifdef _WIN32
+            Sleep(seconds * 1000); // Windows uses milliseconds
+        #else
+            sleep(seconds); // Unix/Linux uses seconds
+        #endif
+    }
 }

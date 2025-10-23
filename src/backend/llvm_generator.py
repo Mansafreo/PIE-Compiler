@@ -21,7 +21,6 @@ class LLVMCodeGenerator(Visitor):
         self._declare_runtime_functions()
 
     def _initialize_llvm(self):
-        llvm.initialize()
         llvm.initialize_native_target()
         llvm.initialize_native_asmprinter()
         self.target_machine = llvm.Target.from_default_triple().create_target_machine()
@@ -88,7 +87,7 @@ class LLVMCodeGenerator(Visitor):
             return ir.IntType(8)
         elif type_str == 'string':
             return ir.IntType(8).as_pointer()
-        elif type_str == 'boolean':
+        elif type_str == 'boolean' or type_str == 'bool':
             return ir.IntType(1)
         elif type_str == 'void':
             return ir.VoidType()
@@ -106,6 +105,8 @@ class LLVMCodeGenerator(Visitor):
             return self.d_array_char_type
         elif type_str == 'dict':
             return self.dict_type
+        elif type_str == 'regex':
+            return ir.IntType(8).as_pointer()  # RegexPattern* is a pointer
         elif type_str == 'void*':
             return ir.IntType(8).as_pointer()
         else:
@@ -130,6 +131,7 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), [self.get_llvm_type('char')]), name="output_char")
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), [self.get_llvm_type('float'), self.get_llvm_type('int')]), name="output_float")
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), []), name="pie_exit")
+        ir.Function(self.module, ir.FunctionType(ir.VoidType(), [self.get_llvm_type('int')]), name="pie_sleep")
 
         # Math Library
         double_type = self.get_llvm_type('float')
@@ -161,13 +163,37 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(double_type, []), name="pie_e")
         ir.Function(self.module, ir.FunctionType(int_type, []), name="pie_time")
 
+        # Time Library
+        int_type = self.get_llvm_type('int')
+        string_type = self.get_llvm_type('string')
+        ir.Function(self.module, ir.FunctionType(int_type, []), name="pie_time_now")
+        ir.Function(self.module, ir.FunctionType(string_type, [int_type]), name="pie_time_to_local")
+
         # String Library
         string_type = self.get_llvm_type('string')
+        int_type = self.get_llvm_type('int')
+        float_type = self.get_llvm_type('float')
+        char_type = self.get_llvm_type('char')
         ir.Function(self.module, ir.FunctionType(string_type, [string_type, string_type]), name="concat_strings")
         ir.Function(self.module, ir.FunctionType(int_type, [string_type]), name="pie_strlen")
         ir.Function(self.module, ir.FunctionType(int_type, [string_type, string_type]), name="pie_strcmp")
         ir.Function(self.module, ir.FunctionType(string_type, [string_type, string_type]), name="pie_strcpy")
         ir.Function(self.module, ir.FunctionType(string_type, [string_type, string_type]), name="pie_strcat")
+        
+        # Type-to-string conversion functions
+        ir.Function(self.module, ir.FunctionType(string_type, [int_type]), name="int_to_string")
+        ir.Function(self.module, ir.FunctionType(string_type, [float_type]), name="float_to_string")
+        ir.Function(self.module, ir.FunctionType(string_type, [char_type]), name="char_to_string")
+        
+        # Advanced string utilities
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_to_upper")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_to_lower")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_trim")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type, int_type, int_type]), name="string_substring")
+        ir.Function(self.module, ir.FunctionType(int_type, [string_type, string_type]), name="string_index_of")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type, ir.IntType(8), ir.IntType(8)]), name="string_replace_char")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_reverse")
+        ir.Function(self.module, ir.FunctionType(int_type, [string_type, ir.IntType(8)]), name="string_count_char")
 
         # File I/O Library
         file_type = self.get_llvm_type('file')
@@ -207,6 +233,15 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(dict_value_type, [int_type]), name="new_int")
         ir.Function(self.module, ir.FunctionType(dict_value_type, [double_type]), name="new_float")
         ir.Function(self.module, ir.FunctionType(dict_value_type, [string_type]), name="new_string")
+
+        # Regex functions
+        regex_type = ir.IntType(8).as_pointer()  # RegexPattern*
+
+        ir.Function(self.module, ir.FunctionType(regex_type, [string_type]), name="regex_compile")
+
+        ir.Function(self.module, ir.FunctionType(int_type, [regex_type, string_type]), name="regex_match")
+
+        ir.Function(self.module, ir.FunctionType(ir.VoidType(), [regex_type]), name="regex_free")
 
         # Variable validation functions
         ir.Function(self.module, ir.FunctionType(int_type, [ir.IntType(8).as_pointer()]), name="is_variable_defined")
@@ -365,16 +400,25 @@ class LLVMCodeGenerator(Visitor):
                         if result_array is not None:  # Only store if we have a result
                             self.builder.store(result_array, self.global_vars[name])
             
-            # Process deferred initializers (function call initializers) after arrays are created
-            for var_name, initializer_node in self.deferred_initializers:
-                if var_name in self.global_vars:
-                    init_val = self.visit(initializer_node)
-                    self.builder.store(init_val, self.global_vars[var_name])
-                        
-            # Then visit all non-declaration, non-function-definition statements
+            # Process all statements in order, including deferred initializers
+            # This ensures that declarations with function call initializers are executed
+            # in their original order relative to other statements
             for stmt in ast.statements:
-                if not isinstance(stmt, (Declaration, FunctionDefinition)):
-                    self.visit(stmt)
+                if not isinstance(stmt, FunctionDefinition):
+                    if isinstance(stmt, Declaration):
+                        # Check if this declaration has a deferred initializer
+                        var_name = stmt.identifier
+                        if var_name in self.global_vars:
+                            # Find if there's a deferred initializer for this variable
+                            for deferred_var_name, initializer_node in self.deferred_initializers:
+                                if deferred_var_name == var_name:
+                                    # Execute the deferred initializer now
+                                    init_val = self.visit(initializer_node)
+                                    self.builder.store(init_val, self.global_vars[var_name])
+                                    break
+                    else:
+                        # Process non-declaration statements normally
+                        self.visit(stmt)
             
             # Return 0 from main
             if not self.builder.block.is_terminated:
@@ -535,6 +579,51 @@ class LLVMCodeGenerator(Visitor):
                 if val.startswith("'") and val.endswith("'") and len(val) == 3:
                     ch = val[1]  # Extract the character
                     return ir.Constant(ir.IntType(8), ord(ch))
+            elif isinstance(val, (int, float)):
+                if isinstance(val, int):
+                    return ir.Constant(ir.IntType(32), val)
+                else:
+                    return ir.Constant(ir.DoubleType(), val)
+        
+        # Handle binary operations for constant evaluation
+        if hasattr(node, 'op') and hasattr(node, 'left') and hasattr(node, 'right'):  # BinaryOp
+            left_val = self._evaluate_constant_expression(node.left)
+            right_val = self._evaluate_constant_expression(node.right)
+            
+            # Convert to Python values for computation
+            if isinstance(left_val.type, ir.IntType):
+                left_py = left_val.constant
+            elif isinstance(left_val.type, ir.DoubleType):
+                left_py = left_val.constant
+            else:
+                return ir.Constant(ir.IntType(32), 0)  # Fallback
+                
+            if isinstance(right_val.type, ir.IntType):
+                right_py = right_val.constant
+            elif isinstance(right_val.type, ir.DoubleType):
+                right_py = right_val.constant
+            else:
+                return ir.Constant(ir.IntType(32), 0)  # Fallback
+            
+            # Perform the operation
+            if node.op == '+':
+                result = left_py + right_py
+            elif node.op == '-':
+                result = left_py - right_py
+            elif node.op == '*':
+                result = left_py * right_py
+            elif node.op == '/':
+                result = left_py / right_py
+            elif node.op == '%':
+                result = left_py % right_py
+            else:
+                return ir.Constant(ir.IntType(32), 0)  # Fallback
+            
+            # Return appropriate type based on operands and result
+            if isinstance(result, float) or isinstance(left_py, float) or isinstance(right_py, float):
+                return ir.Constant(ir.DoubleType(), float(result))
+            else:
+                return ir.Constant(ir.IntType(32), int(result))
         
         # For function calls and other expressions, we'll need more sophisticated handling
         # For now, return a default value - use int32 as it's the most common
@@ -545,8 +634,8 @@ class LLVMCodeGenerator(Visitor):
         # Check if the node's class name indicates it's a function call
         class_name = type(node).__name__
         
-        # Check if the node itself is a function call
-        if class_name in ['ArrayIndexOf', 'ArrayContains', 'ArrayPush', 'ArrayPop', 'ArraySize', 'ArrayAvg', 'SystemOutput', 'FunctionCall', 'DictionaryLiteral']:
+        # Check if the node itself is a function call or array subscript access
+        if class_name in ['ArrayIndexOf', 'ArrayContains', 'ArrayPush', 'ArrayPop', 'ArraySize', 'ArrayAvg', 'SystemOutput', 'FunctionCall', 'DictionaryLiteral', 'SubscriptAccess']:
             return True
         
         # Check if it's a BinaryOp that references global variables
@@ -805,13 +894,43 @@ class LLVMCodeGenerator(Visitor):
 
         # String or Array concatenation check first
         if node.op == '+':
-            # Check for string concatenation
-            if (isinstance(lhs.type, ir.PointerType) and 
-                isinstance(rhs.type, ir.PointerType) and
-                lhs.type.pointee == ir.IntType(8) and 
-                rhs.type.pointee == ir.IntType(8)):
-                concat_func = self.module.get_global("concat_strings")
-                return self.builder.call(concat_func, [lhs, rhs], 'concat_tmp')
+            # Check for string concatenation (including auto type-to-string conversion)
+            def is_string_type(val):
+                """Check if a value is a string pointer (i8*)"""
+                return (isinstance(val.type, ir.PointerType) and 
+                       val.type.pointee == ir.IntType(8))
+            
+            def convert_to_string(val):
+                """Convert a non-string value to string"""
+                if is_string_type(val):
+                    return val
+                elif isinstance(val.type, ir.IntType) and val.type.width == 32:
+                    # Convert int to string
+                    int_to_str_func = self.module.get_global("int_to_string")
+                    return self.builder.call(int_to_str_func, [val], 'int_to_str')
+                elif isinstance(val.type, ir.DoubleType):
+                    # Convert float to string
+                    float_to_str_func = self.module.get_global("float_to_string")
+                    return self.builder.call(float_to_str_func, [val], 'float_to_str')
+                elif isinstance(val.type, ir.IntType) and val.type.width == 8:
+                    # Convert char to string
+                    char_to_str_func = self.module.get_global("char_to_string")
+                    return self.builder.call(char_to_str_func, [val], 'char_to_str')
+                else:
+                    return None
+            
+            # Check if either operand is a string
+            left_is_string = is_string_type(lhs)
+            right_is_string = is_string_type(rhs)
+            
+            if left_is_string or right_is_string:
+                # Convert both operands to strings
+                lhs_str = convert_to_string(lhs)
+                rhs_str = convert_to_string(rhs)
+                
+                if lhs_str is not None and rhs_str is not None:
+                    concat_func = self.module.get_global("concat_strings")
+                    return self.builder.call(concat_func, [lhs_str, rhs_str], 'concat_tmp')
 
             # Check for array concatenation
             if hasattr(node, 'result_type') and node.result_type == 'array':
@@ -913,18 +1032,20 @@ class LLVMCodeGenerator(Visitor):
             if val.startswith('"') and val.endswith('"'):
                 str_val = val[1:-1].replace('\\n', '\n') + '\0'
                 if str_val in self.global_strings:
-                    ptr = self.global_strings[str_val]
+                    global_var = self.global_strings[str_val]
                 else:
                     c_str = ir.Constant(ir.ArrayType(ir.IntType(8), len(str_val)), bytearray(str_val.encode("utf8")))
                     global_var = ir.GlobalVariable(self.module, c_str.type, name=f".str{len(self.global_strings)}")
                     global_var.initializer = c_str
                     global_var.global_constant = True
                     global_var.linkage = 'internal'
-                    if self.builder:
-                        ptr = self.builder.bitcast(global_var, ir.IntType(8).as_pointer())
-                    else:
-                        ptr = global_var.gep([ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)])
-                    self.global_strings[str_val] = ptr
+                    self.global_strings[str_val] = global_var
+                
+                # Create a fresh bitcast/GEP for each use to avoid domination issues
+                if self.builder:
+                    ptr = self.builder.bitcast(global_var, ir.IntType(8).as_pointer())
+                else:
+                    ptr = global_var.gep([ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)])
                 return ptr
         raise Exception(f"Unsupported primary literal: {val}")
 
@@ -936,13 +1057,13 @@ class LLVMCodeGenerator(Visitor):
             if isinstance(raw_val.type, ir.IntType) and raw_val.type.width == 8:
                 return raw_val
             # If we have a string pointer, load the first character
-            elif isinstance(raw_val.type, ir.IntType(8).as_pointer()):
+            elif raw_val.type == ir.IntType(8).as_pointer():
                 return self.builder.load(raw_val)
         
         # For string arrays: expecting i8*, return string pointers as-is
-        elif isinstance(expected_elem_type, ir.IntType(8).as_pointer()):
+        elif expected_elem_type == ir.IntType(8).as_pointer():
             # If we have a string pointer, return it directly
-            if isinstance(raw_val.type, ir.IntType(8).as_pointer()):
+            if raw_val.type == ir.IntType(8).as_pointer():
                 return raw_val
         
         # Otherwise normal pointer load semantics
@@ -1173,9 +1294,118 @@ class LLVMCodeGenerator(Visitor):
     def visit_functioncall(self, node):
         if node.name.startswith('arr_'):
             return self.visit_array_function_call(node)
+        
+        # Special handling for dict_get with type inference
+
+        if node.name == 'dict_get':
+
+            dict_val = self._load_if_pointer(self.visit(node.args[0]))
+
+            key_val = self._load_if_pointer(self.visit(node.args[1]))
+
+ 
+
+            # Get the inferred return type from semantic analysis
+
+            inferred_type = getattr(node, 'inferred_return_type', None)
+
+ 
+
+            if inferred_type == 'KEYWORD_INT' or inferred_type == 'int':
+
+                func = self.module.get_global("dict_get_int")
+
+                return self.builder.call(func, [dict_val, key_val], 'dict_get_int_result')
+
+            elif inferred_type == 'KEYWORD_FLOAT' or inferred_type == 'float':
+
+                func = self.module.get_global("dict_get_float")
+
+                return self.builder.call(func, [dict_val, key_val], 'dict_get_float_result')
+
+            elif inferred_type == 'KEYWORD_STRING' or inferred_type == 'string':
+
+                func = self.module.get_global("dict_get_string")
+
+                return self.builder.call(func, [dict_val, key_val], 'dict_get_string_result')
+
+            else:
+
+                # Default to dict_get (returns void*)
+
+                func = self.module.get_global("dict_get")
+
+                return self.builder.call(func, [dict_val, key_val], 'dict_get_result')
+
+ 
+
+        # Special handling for dict_set with type inference
+
+        if node.name == 'dict_set':
+
+            dict_val = self._load_if_pointer(self.visit(node.args[0]))
+
+            key_val = self.visit(node.args[1])  # Don't load string pointers
+
+            value_val = self.visit(node.args[2])
+
+ 
+
+            # Get the value type from semantic analysis
+
+            value_type = getattr(node, 'value_type', None)
+
+ 
+
+            # Create the appropriate DictValue wrapper
+
+            if value_type == 'KEYWORD_INT' or value_type == 'int':
+
+                value_val = self._load_if_pointer(value_val)
+
+                new_int_func = self.module.get_global("new_int")
+
+                dict_value = self.builder.call(new_int_func, [value_val], 'dict_value_int')
+
+            elif value_type == 'KEYWORD_FLOAT' or value_type == 'float':
+
+                value_val = self._load_if_pointer(value_val)
+
+                new_float_func = self.module.get_global("new_float")
+
+                dict_value = self.builder.call(new_float_func, [value_val], 'dict_value_float')
+
+            elif value_type == 'KEYWORD_STRING' or value_type == 'string':
+
+                value_val = self._load_if_pointer(value_val)
+
+                new_string_func = self.module.get_global("new_string")
+
+                dict_value = self.builder.call(new_string_func, [value_val], 'dict_value_string')
+
+            else:
+
+                # Default handling
+
+                value_val = self._load_if_pointer(value_val)
+
+                new_int_func = self.module.get_global("new_int")
+
+                dict_value = self.builder.call(new_int_func, [value_val], 'dict_value_default')
+
+ 
+
+            # Call dict_set
+
+            dict_set_func = self.module.get_global("dict_set")
+
+            return self.builder.call(dict_set_func, [dict_val, key_val, dict_value], 'dict_set_result')
+
+       
 
         # Map PIE function names to their actual LLVM function names
-        math_function_map = {
+        function_name_map = {
+            # Math functions
             'pow': 'pie_pow',
             'sqrt': 'pie_sqrt',
             'sin': 'pie_sin',
@@ -1201,10 +1431,17 @@ class LLVMCodeGenerator(Visitor):
             'rand_range': 'pie_rand_range',
             'pi': 'pie_pi',
             'e': 'pie_e',
-            'time': 'pie_time'
+            'time': 'pie_time',
+            'time_now': 'pie_time_now',
+            'time_to_local': 'pie_time_to_local',
+            # String functions
+            'strlen': 'pie_strlen',
+            'strcmp': 'pie_strcmp',
+            'strcpy': 'pie_strcpy',
+            'strcat': 'pie_strcat'
         }
         
-        actual_name = math_function_map.get(node.name, node.name)
+        actual_name = function_name_map.get(node.name, node.name)
         func = self.module.get_global(actual_name)
         if func is None:
             raise Exception(f"Unknown function referenced: {node.name} (mapped to {actual_name})")
@@ -1389,6 +1626,10 @@ class LLVMCodeGenerator(Visitor):
     # of creating blocks and using branching instructions.
     def visit_systemoutput(self, node):
         output_type = node.output_type.type_name.replace('KEYWORD_', '').lower()
+        is_bool_output = (output_type == 'bool')
+
+        if is_bool_output:
+            output_type = 'int'
 
         if output_type == 'array':
             array_node = node.expression
@@ -1397,7 +1638,24 @@ class LLVMCodeGenerator(Visitor):
 
             array_name = array_node.name
             symbol = self.symbol_table.lookup_symbol(array_name)
-            element_type = symbol['element_type'].replace('KEYWORD_', '').lower()
+            
+            # Get element type from symbol table or infer from LLVM type
+            if symbol and 'element_type' in symbol:
+                element_type = symbol['element_type'].replace('KEYWORD_', '').lower()
+            else:
+                # Fallback: infer element type from LLVM struct type
+                # The array struct ptr type is like %DArrayInt*, %DArrayString*, etc.
+                struct_type_name = str(array_struct_ptr.type)
+                if 'DArrayInt' in struct_type_name:
+                    element_type = 'int'
+                elif 'DArrayString' in struct_type_name:
+                    element_type = 'string'
+                elif 'DArrayFloat' in struct_type_name:
+                    element_type = 'float'
+                elif 'DArrayChar' in struct_type_name:
+                    element_type = 'char'
+                else:
+                    raise Exception(f"Cannot determine element type for array '{array_name}' with type {struct_type_name}")
 
             func_name = f"print_{element_type}_array"
             print_func = self.module.get_global(func_name)
@@ -1415,9 +1673,19 @@ class LLVMCodeGenerator(Visitor):
             else:
                 # It's already an i8* (string literal)
                 output_val = raw_val
+        elif output_type == 'char':
+            # For char, we always need to load the value (i8) from the pointer (i8*)
+            if isinstance(raw_val.type, ir.PointerType):
+                output_val = self.builder.load(raw_val)
+            else:
+                output_val = raw_val
         else:
             # For other types, load if it's a pointer
             output_val = self._load_if_pointer(raw_val)
+
+        if is_bool_output:
+            if isinstance(output_val.type, ir.IntType) and output_val.type.width == 1:
+                output_val = self.builder.zext(output_val, ir.IntType(32))
 
         func_name = f"output_{output_type}"
         output_func = self.module.get_global(func_name)
@@ -1452,6 +1720,12 @@ class LLVMCodeGenerator(Visitor):
     def visit_systemexit(self, node):
         exit_func = self.module.get_global("pie_exit")
         self.builder.call(exit_func, [])
+
+    def visit_systemsleep(self, node):
+        sleep_func = self.module.get_global("pie_sleep")
+        # Visit the duration expression and load if it's a pointer
+        duration_val = self._load_if_pointer(self.visit(node.duration))
+        self.builder.call(sleep_func, [duration_val])
 
     def visit_arraypush(self, node):
         array_ptr = self.visit(node.array)
