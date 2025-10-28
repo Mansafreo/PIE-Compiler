@@ -1,0 +1,22 @@
+int scores[]=[];
+int limit=10;
+while(limit>0){
+	int randomNumber=rand_range(1,99);
+	sleep(1);
+	output("I have chosen a random number: "+randomNumber,string);
+	arr_push(scores,randomNumber);
+	output("I have added that number to the array",string);
+	limit=limit-1;
+	output("I have "+limit+" numbers to go",string);
+}
+int sum=0;
+for(int i=0;i<arr_size(scores);i=i+1){
+	output("adding "+scores[i]+" to the array ",string);
+	sum=sum+scores[i];
+	//output("sum sofar is "+sum,string);
+}
+
+output("The sum of the numbers is "+sum,string);
+
+//To filter out even numbers
+

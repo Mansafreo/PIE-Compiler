@@ -1,41 +1,70 @@
+// // PIE Language Playground - Demonstrating Type Conversions and Crypto
 
-int userInput=0;
-int starting_timestamp=time_now();
-int duration=20; // seconds
-int end_timestamp=starting_timestamp+duration;
-// while(userInput<=3){
-//     output("Select an option:", string);
-//     output("1. Show compilation timestamp", string);
-//     output("2. Show local time", string);
-//     output("3. Show both", string);
-//     input(userInput, int);
-//     int timestamp=time_now();
-//     string localTime=time_to_local(timestamp);
-//     if(userInput==1){
-//         output("Compilation started at: " + timestamp, string);
-//     }else if(userInput==2){
-//         output("Local time: " + localTime, string);
-//     }else{
-//         output("Compilation started at: " + timestamp, string);
-//         output("Local time: " + localTime, string);
-//     }
-// }
+// output("=== PIE Language Demo ===", string);
+// output("", string);
 
-// while(time_now()<end_timestamp){
-//     int timestamp=time_now();
-//     string localTime=time_to_local(timestamp);
-//     output("Current timestamp: " + timestamp, string);
-//     output("Local time: " + localTime, string);
-//     sleep(1); // Sleep for 1 second before next update
-// }
+// // Alien Converter using char_shift
+// output("--- Alien Converter ---", string);
+// string earthling = "Greetings from Earth!";
+// string alienling = char_shift(earthling, 3);
+// output("Earthling: " + earthling, string);
+// output("Alienling: " + alienling, string);
+// string back_to_earth = char_shift(alienling, -3);
+// output("Decoded: " + back_to_earth, string);
+// output("", string);
 
-//test countdown
+// // Caesar Cipher Demo
+// output("--- Caesar Cipher ---", string);
+// string secret_message = "ATTACK AT DAWN";
+// string encrypted = caesar_cipher(secret_message, 7);
+// output("Encrypted: " + encrypted, string);
+// string decrypted = caesar_decipher(encrypted, 7);
+// output("Decrypted: " + decrypted, string);
+// output("", string);
 
-output("Countdown starting from 5:", string);
-int count=5;
-while(count>0){
-    output(count, int);
-    sleep(1);
-    count=count-1;
-}
-output("Go!", string);
+// // ROT13 for simple encryption
+// output("--- ROT13 Cipher ---", string);
+// string password = "MySecretPassword";
+// string rot13_encoded = rot13(password);
+// output("Password: " + password, string);
+// output("ROT13: " + rot13_encoded, string);
+// string rot13_decoded = rot13(rot13_encoded);
+// output("Decoded: " + rot13_decoded, string);
+// output("", string);
+
+// string testCipher=caesar_decipher(rot13_encoded, 13);
+// output("Test Cipher: " + testCipher, string);
+
+// // Type Conversion Examples
+// output("--- Type Conversions ---", string);
+// string num_str = "123";
+// int num = string_to_int(num_str);
+// output("String '123' to int: " + num, string);
+
+// char letter = 'Z';
+// int ascii = char_to_int(letter);
+// output("Char 'Z' ASCII value: " + ascii, string);
+
+// int code = 65;
+// char from_code = int_to_char(code);
+// output("ASCII 65 to char: " + from_code, string);
+dict person = {"name": "Alice", "age": 25, "score": 95.5};
+
+string name = dict_get(person, "name");    // "Alice"
+int age = dict_get(person, "age");         // 25
+float score = dict_get(person, "score");   // 95.5
+
+output("Name: " + name, string);
+output("Age: " + age, string);
+output("Score: " + score, string);
+
+//delete key
+dict_delete(person, "age");
+output("After deleting age:", string);
+age = dict_get(person, "age");  // Should handle missing key
+output("Age: " + age, string);
+// Check existence
+int hasName = dict_has_key(person, "name");  // true
+int hasAge = dict_has_key(person, "age");    // false
+output("Has name: " + hasName, string);
+output("Has age: " + hasAge, string);

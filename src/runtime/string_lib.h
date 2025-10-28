@@ -2,6 +2,7 @@
 #define STRING_LIB_H
 
 #include <stddef.h>
+#include "d_array.h"
 
 // Basic string functions
 int pie_strlen(const char* s);
@@ -18,5 +19,8 @@ int string_index_of(const char* haystack, const char* needle);
 char* string_replace_char(const char* str, char old_char, char new_char);
 char* string_reverse(const char* str);
 int string_count_char(const char* str, char ch);
+char string_char_at(const char* str, int index);
+char** string_split(const char* str, const char* delimiter, int* count);
+DArrayString* string_split_to_array(const char* str, const char* delimiter);
 
 #endif // STRING_LIB_H

@@ -1,4 +1,5 @@
 #include "string_lib.h"
+#include "d_array.h"
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -163,4 +164,132 @@ int string_count_char(const char* str, char ch) {
     }
     
     return count;
+}
+
+// Get character at specific index
+char string_char_at(const char* str, int index) {
+    if (!str || index < 0) return '\0';
+    
+    size_t len = strlen(str);
+    if ((size_t)index >= len) return '\0';
+    
+    return str[index];
+}
+
+// Split string by delimiter
+// Returns array of strings and sets count to number of parts
+// Caller must free the returned array and each string in it
+char** string_split(const char* str, const char* delimiter, int* count) {
+    if (!str || !delimiter || !count) {
+        if (count) *count = 0;
+        return NULL;
+    }
+    
+    // Handle empty delimiter - return whole string
+    if (delimiter[0] == '\0') {
+        char** result = (char**)malloc(sizeof(char*));
+        if (!result) {
+            *count = 0;
+            return NULL;
+        }
+        result[0] = (char*)malloc(strlen(str) + 1);
+        if (!result[0]) {
+            free(result);
+            *count = 0;
+            return NULL;
+        }
+        strcpy(result[0], str);
+        *count = 1;
+        return result;
+    }
+    
+    // Count delimiters to determine array size
+    int parts = 1;
+    const char* temp = str;
+    size_t delim_len = strlen(delimiter);
+    
+    while ((temp = strstr(temp, delimiter)) != NULL) {
+        parts++;
+        temp += delim_len;
+    }
+    
+    // Allocate array for result
+    char** result = (char**)malloc(parts * sizeof(char*));
+    if (!result) {
+        *count = 0;
+        return NULL;
+    }
+    
+    // Split the string
+    int index = 0;
+    const char* start = str;
+    const char* end;
+    
+    while ((end = strstr(start, delimiter)) != NULL) {
+        size_t part_len = end - start;
+        result[index] = (char*)malloc(part_len + 1);
+        if (!result[index]) {
+            // Free previously allocated strings
+            for (int i = 0; i < index; i++) {
+                free(result[i]);
+            }
+            free(result);
+            *count = 0;
+            return NULL;
+        }
+        memcpy(result[index], start, part_len);
+        result[index][part_len] = '\0';
+        index++;
+        start = end + delim_len;
+    }
+    
+    // Add the last part
+    size_t last_len = strlen(start);
+    result[index] = (char*)malloc(last_len + 1);
+    if (!result[index]) {
+        for (int i = 0; i < index; i++) {
+            free(result[i]);
+        }
+        free(result);
+        *count = 0;
+        return NULL;
+    }
+    strcpy(result[index], start);
+    
+    *count = parts;
+    return result;
+}
+
+// Wrapper that returns DArrayString for easier use in PIE
+DArrayString* string_split_to_array(const char* str, const char* delimiter) {
+    if (!str || !delimiter) {
+        return NULL;
+    }
+    
+    int count = 0;
+    char** parts = string_split(str, delimiter, &count);
+    
+    if (!parts) {
+        return NULL;
+    }
+    
+    // Create a DArrayString and populate it
+    DArrayString* result = d_array_string_create();
+    if (!result) {
+        // Free the parts array
+        for (int i = 0; i < count; i++) {
+            free(parts[i]);
+        }
+        free(parts);
+        return NULL;
+    }
+    
+    // Add each part to the dynamic array
+    for (int i = 0; i < count; i++) {
+        d_array_string_append(result, parts[i]);
+        free(parts[i]);  // Free the individual string after copying
+    }
+    free(parts);  // Free the array itself
+    
+    return result;
 }

@@ -530,8 +530,21 @@ class Parser:
     def p_expression_opt(self, p):
         '''expression_opt : expression
                          | assignment_statement_no_semi
+                         | increment_decrement
                          | empty'''
         p[0] = p[1]
+    
+    def p_increment_decrement(self, p):
+        '''increment_decrement : IDENTIFIER PLUS PLUS
+                              | IDENTIFIER MINUS MINUS'''
+        # Convert i++ to i = i + 1 and i-- to i = i - 1
+        identifier = Identifier(p[1])
+        if p[2] == '+':
+            # i++ becomes i = i + 1
+            p[0] = Assignment(identifier, BinaryOp('+', identifier, Primary('1')))
+        else:
+            # i-- becomes i = i - 1
+            p[0] = Assignment(identifier, BinaryOp('-', identifier, Primary('1')))
 
     def p_empty(self, p):
         'empty :'

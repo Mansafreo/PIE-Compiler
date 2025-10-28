@@ -1,0 +1,58 @@
+// PIE Shop Menu-Driven Program
+int choice = 0;
+int total = 0;
+
+string shoppingList = "";
+string welcome = "Welcome to the PIE Shop!";
+string menu1 = "1. Apple - $5";
+string menu2 = "2. Banana - $3";
+string menu3 = "3. Orange - $4";
+string menu4 = "4. Exit";
+string ask = "Enter your choice (1-4):";
+string thanks = "Thank you for shopping!";
+string bill = "Your total is:";
+string invalid = "Invalid choice. Try again.";
+string added1 = "Added Apple ($5)";
+string added2 = "Added Banana ($3)";
+string added3 = "Added Orange ($4)";
+
+output(welcome, string);
+
+for(int i = 0; i < 100; i = i + 1){ // Arbitrary high loop count
+    output(menu1, string);
+    output(menu2, string);
+    output(menu3, string);
+    output(menu4, string);
+    output(ask, string);
+
+    input(choice, int);
+
+    if(choice == 1){
+        shoppingList = shoppingList + "Apple $5 \n";
+        total = total + 5;
+        output(added1, string);
+    }else{
+        if(choice == 2){
+            shoppingList = shoppingList + "Banana $3 \n";
+            total = total + 3;
+            output(added2, string);
+        }else{
+            if(choice == 3){
+                shoppingList = shoppingList + "Orange $4 \n";
+                total = total + 4;
+                output(added3, string);
+            }else{
+                if(choice == 4){
+                    output(thanks, string);
+                    output(bill, string);
+                    output(total, int);
+                    output("Your shopping list: " + "\n" + shoppingList, string);
+                    i = 100; // Exit the loop
+                }else{
+                    output(invalid, string);
+                }
+            }
+        }
+    }
+    output("", string); // Blank line for readability
+}

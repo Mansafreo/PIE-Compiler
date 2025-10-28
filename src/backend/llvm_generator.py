@@ -1,7 +1,7 @@
 import llvmlite.ir as ir
 import llvmlite.binding as llvm
 from frontend.visitor import Visitor
-from frontend.ast import Declaration, FunctionDefinition, FunctionCall, SubscriptAccess, ArrayDeclaration
+from frontend.ast import Declaration, FunctionDefinition, FunctionCall, SubscriptAccess, ArrayDeclaration, Identifier
 from frontend.types import TypeInfo
 
 class LLVMCodeGenerator(Visitor):
@@ -185,6 +185,23 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(string_type, [float_type]), name="float_to_string")
         ir.Function(self.module, ir.FunctionType(string_type, [char_type]), name="char_to_string")
         
+        # Type conversion functions (from crypto_lib)
+        ir.Function(self.module, ir.FunctionType(int_type, [string_type]), name="string_to_int")
+        ir.Function(self.module, ir.FunctionType(float_type, [string_type]), name="string_to_float")
+        ir.Function(self.module, ir.FunctionType(char_type, [string_type]), name="string_to_char")
+        ir.Function(self.module, ir.FunctionType(int_type, [char_type]), name="char_to_int")
+        ir.Function(self.module, ir.FunctionType(char_type, [int_type]), name="int_to_char")
+        ir.Function(self.module, ir.FunctionType(float_type, [int_type]), name="int_to_float")
+        ir.Function(self.module, ir.FunctionType(int_type, [float_type]), name="float_to_int")
+        
+        # Cryptography and encoding functions
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type, int_type]), name="caesar_cipher")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type, int_type]), name="caesar_decipher")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="rot13")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type, int_type]), name="char_shift")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="reverse_string")
+        ir.Function(self.module, ir.FunctionType(string_type, [string_type, string_type]), name="xor_cipher")
+        
         # Advanced string utilities
         ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_to_upper")
         ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_to_lower")
@@ -194,12 +211,19 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(string_type, [string_type, ir.IntType(8), ir.IntType(8)]), name="string_replace_char")
         ir.Function(self.module, ir.FunctionType(string_type, [string_type]), name="string_reverse")
         ir.Function(self.module, ir.FunctionType(int_type, [string_type, ir.IntType(8)]), name="string_count_char")
+        ir.Function(self.module, ir.FunctionType(char_type, [string_type, int_type]), name="string_char_at")
+        ir.Function(self.module, ir.FunctionType(string_type.as_pointer(), [string_type, string_type, int_type.as_pointer()]), name="string_split")
+        
+        # String split wrapper that returns DArrayString
+        d_array_string_type = self.module.context.get_identified_type("DArrayString")
+        ir.Function(self.module, ir.FunctionType(d_array_string_type.as_pointer(), [string_type, string_type]), name="string_split_to_array")
 
         # File I/O Library
         file_type = self.get_llvm_type('file')
         ir.Function(self.module, ir.FunctionType(file_type, [string_type, string_type]), name="file_open")
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), [file_type]), name="file_close")
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), [file_type, string_type]), name="file_write")
+        ir.Function(self.module, ir.FunctionType(ir.VoidType(), [file_type]), name="file_flush")
         ir.Function(self.module, ir.FunctionType(string_type, [file_type]), name="file_read_all")
         ir.Function(self.module, ir.FunctionType(string_type, [file_type]), name="file_read_line")
 
@@ -330,9 +354,10 @@ class LLVMCodeGenerator(Visitor):
 
     def generate(self, ast):
         """Generate LLVM IR from the AST."""
-        # First pass: declare global variables and function definitions only
+        # First pass: declare function definitions only
+        # Don't process declarations here - they should be inside functions
         for stmt in ast.statements:
-            if isinstance(stmt, (Declaration, FunctionDefinition)):
+            if isinstance(stmt, FunctionDefinition):
                 self.visit(stmt)
         
         # Create a main function to wrap global statements if needed
@@ -400,25 +425,13 @@ class LLVMCodeGenerator(Visitor):
                         if result_array is not None:  # Only store if we have a result
                             self.builder.store(result_array, self.global_vars[name])
             
-            # Process all statements in order, including deferred initializers
-            # This ensures that declarations with function call initializers are executed
-            # in their original order relative to other statements
+            # Process all statements in order
+            # Since we didn't process declarations in the first pass, they'll be
+            # created as local variables inside this main function
             for stmt in ast.statements:
                 if not isinstance(stmt, FunctionDefinition):
-                    if isinstance(stmt, Declaration):
-                        # Check if this declaration has a deferred initializer
-                        var_name = stmt.identifier
-                        if var_name in self.global_vars:
-                            # Find if there's a deferred initializer for this variable
-                            for deferred_var_name, initializer_node in self.deferred_initializers:
-                                if deferred_var_name == var_name:
-                                    # Execute the deferred initializer now
-                                    init_val = self.visit(initializer_node)
-                                    self.builder.store(init_val, self.global_vars[var_name])
-                                    break
-                    else:
-                        # Process non-declaration statements normally
-                        self.visit(stmt)
+                    # Process all non-function statements (declarations and executable statements)
+                    self.visit(stmt)
             
             # Return 0 from main
             if not self.builder.block.is_terminated:
@@ -542,6 +555,14 @@ class LLVMCodeGenerator(Visitor):
             # If there's an initializer, visit it and store its value
             if node.initializer:
                 init_val = self.visit(node.initializer)
+                
+                # Handle variable-to-variable initialization
+                # If init_val is a pointer to the same type as var_type, load it to get the value
+                if isinstance(init_val.type, ir.PointerType):
+                    if init_val.type.pointee == var_type:
+                        # init_val is a pointer to a variable of the target type, load it
+                        init_val = self.builder.load(init_val)
+                
                 self.builder.store(init_val, ptr)
 
     def _evaluate_constant_expression(self, node):
@@ -774,14 +795,39 @@ class LLVMCodeGenerator(Visitor):
         # Fallback
         ptr = self.visit(node.lhs)
         value_to_store = self.visit(node.rhs)
+        
+        # Get the target type
         target_type = ptr.type.pointee if hasattr(ptr.type,'pointee') else ptr.type.pointed_type
+        
+        # Handle variable-to-variable assignment
+        # If value_to_store is a pointer to the same type as target_type, load it to get the value
+        if isinstance(value_to_store.type, ir.PointerType):
+            if value_to_store.type.pointee == target_type:
+                # value_to_store is a pointer to a variable of the target type, load it
+                value_to_store = self.builder.load(value_to_store)
+        
+        # Handle int to float conversion
         if target_type != value_to_store.type and isinstance(target_type, ir.DoubleType) and isinstance(value_to_store.type, ir.IntType):
             value_to_store = self.builder.sitofp(value_to_store, target_type)
+            
         self.builder.store(value_to_store, ptr)
 
     def visit_returnstatement(self, node):
         if node.value:
             return_val = self.visit(node.value)
+            
+            # Get the expected return type from the current function
+            expected_return_type = self.current_function.ftype.return_type
+            
+            # If we have a pointer but need a non-pointer (or different pointer depth)
+            # we need to load the value
+            if isinstance(return_val.type, ir.PointerType):
+                # Check if the pointee type matches the expected return type
+                if return_val.type.pointee == expected_return_type:
+                    # Load the value (e.g., loading i8* from i8**)
+                    return_val = self.builder.load(return_val)
+                # If return_val.type already matches expected_return_type, use as-is
+            
             self.builder.ret(return_val)
         else:
             self.builder.ret_void()
@@ -1103,6 +1149,13 @@ class LLVMCodeGenerator(Visitor):
                     # For int variables, we can't compare with null - they're always defined
                     # Return false (not null) for int variables
                     return ir.Constant(ir.IntType(1), 0)
+                elif left.type.pointee == ir.IntType(64):  # i64* (file handle pointer)
+                    loaded_left = self.builder.load(left)
+                    null_val = ir.Constant(ir.IntType(64), 0)
+                    return self.builder.icmp_unsigned('==', loaded_left, null_val, 'null_check')
+            elif isinstance(left.type, ir.IntType) and left.type.width == 64:  # i64 (file handle value)
+                null_val = ir.Constant(ir.IntType(64), 0)
+                return self.builder.icmp_unsigned('==', left, null_val, 'null_check')
             else:
                 # Left is not a pointer type, can't be null
                 return ir.Constant(ir.IntType(1), 0)
@@ -1124,6 +1177,13 @@ class LLVMCodeGenerator(Visitor):
                     # For int variables, we can't compare with null - they're always defined
                     # Return false (not null) for int variables
                     return ir.Constant(ir.IntType(1), 0)
+                elif right.type.pointee == ir.IntType(64):  # i64* (file handle pointer)
+                    loaded_right = self.builder.load(right)
+                    null_val = ir.Constant(ir.IntType(64), 0)
+                    return self.builder.icmp_unsigned('==', loaded_right, null_val, 'null_check')
+            elif isinstance(right.type, ir.IntType) and right.type.width == 64:  # i64 (file handle value)
+                null_val = ir.Constant(ir.IntType(64), 0)
+                return self.builder.icmp_unsigned('==', right, null_val, 'null_check')
             else:
                 # Right is not a pointer type, can't be null
                 return ir.Constant(ir.IntType(1), 0)
@@ -1447,7 +1507,7 @@ class LLVMCodeGenerator(Visitor):
             raise Exception(f"Unknown function referenced: {node.name} (mapped to {actual_name})")
 
         args = []
-        for arg in node.args:
+        for i, arg in enumerate(node.args):
             arg_val = self.visit(arg)
             # Only load from pointer if it's not a return value from functions that should return pointers
             # Functions like new_int, new_float, new_string, dict_create should return pointers
@@ -1455,7 +1515,20 @@ class LLVMCodeGenerator(Visitor):
                 # These functions return pointers that should not be dereferenced
                 args.append(arg_val)
             else:
-                args.append(self._load_if_pointer(arg_val))
+                # Check if we need to load based on what the function expects
+                if i < len(func.args):
+                    expected_type = func.args[i].type
+                    # If we have i8* but function expects i8, load it (char variable)
+                    # If we have i8* and function expects i8*, keep it (string)
+                    if isinstance(arg_val.type, ir.PointerType) and arg_val.type.pointee == ir.IntType(8):
+                        if expected_type == ir.IntType(8):  # Function wants char by value
+                            args.append(self.builder.load(arg_val))
+                        else:  # Function wants i8* (string)
+                            args.append(arg_val)
+                    else:
+                        args.append(self._load_if_pointer(arg_val))
+                else:
+                    args.append(self._load_if_pointer(arg_val))
 
         new_args = []
         for i, arg in enumerate(args):
@@ -1665,13 +1738,37 @@ class LLVMCodeGenerator(Visitor):
         # Get the raw value first
         raw_val = self.visit(node.expression)
         
-        # For string output, we need to handle both string literals and string variables
+        # For string output, we need to handle loading values for conversion
         if output_type == 'string':
             # If it's a double pointer (string variable), load it to get i8*
             if isinstance(raw_val.type, ir.PointerType) and isinstance(raw_val.type.pointee, ir.PointerType):
                 output_val = self.builder.load(raw_val)
+            # If it's a pointer to a basic type (i32*, double*, i8* for char)
+            elif isinstance(raw_val.type, ir.PointerType):
+                # Check what it points to
+                if raw_val.type.pointee == ir.IntType(8):
+                    # Could be char variable (i8*) or string literal (i8*)
+                    # Only load if it's a char variable (check if identifier with char type)
+                    if isinstance(node.expression, Identifier):
+                        # It's an identifier - check if it's a char variable
+                        symbol = self.symbol_table.lookup_symbol(node.expression.name)
+                        if symbol and symbol.get('type') == 'KEYWORD_CHAR':
+                            # It's a char variable - load it
+                            output_val = self.builder.load(raw_val)
+                        else:
+                            # It's a string variable or other - use as is
+                            output_val = raw_val
+                    else:
+                        # String literal - use as is (already i8*)
+                        output_val = raw_val
+                elif isinstance(raw_val.type.pointee, (ir.IntType, ir.DoubleType)):
+                    # Int or float variable - load the value for conversion
+                    output_val = self.builder.load(raw_val)
+                else:
+                    # Other pointer type - use as is
+                    output_val = raw_val
             else:
-                # It's already an i8* (string literal)
+                # It's already a value
                 output_val = raw_val
         elif output_type == 'char':
             # For char, we always need to load the value (i8) from the pointer (i8*)
@@ -1687,14 +1784,31 @@ class LLVMCodeGenerator(Visitor):
             if isinstance(output_val.type, ir.IntType) and output_val.type.width == 1:
                 output_val = self.builder.zext(output_val, ir.IntType(32))
 
-        func_name = f"output_{output_type}"
+        # Handle automatic type conversions for string output
+        actual_output_type = output_type  # Track what we're actually outputting
+        if output_type == 'string':
+            # If we have a char (i8) but need string (i8*), convert it
+            if isinstance(output_val.type, ir.IntType) and output_val.type.width == 8:
+                char_to_str_func = self.module.get_global("char_to_string")
+                output_val = self.builder.call(char_to_str_func, [output_val], 'char_to_str')
+            # If we have an int (i32) but need string (i8*), convert it
+            elif isinstance(output_val.type, ir.IntType) and output_val.type.width == 32:
+                int_to_str_func = self.module.get_global("int_to_string")
+                output_val = self.builder.call(int_to_str_func, [output_val], 'int_to_str')
+            # If we have a float (double) but need string (i8*), convert it
+            elif isinstance(output_val.type, ir.DoubleType):
+                float_to_str_func = self.module.get_global("float_to_string")
+                output_val = self.builder.call(float_to_str_func, [output_val], 'float_to_str')
+
+        func_name = f"output_{actual_output_type}"
         output_func = self.module.get_global(func_name)
 
         if not output_func:
             raise Exception(f"Runtime function {func_name} not found.")
 
         args = [output_val]
-        if output_type == 'float':
+        # Only add precision if we're actually outputting as float (not converted to string)
+        if actual_output_type == 'float' and output_type == 'float':
             precision = self._load_if_pointer(self.visit(node.precision)) if node.precision else ir.Constant(ir.IntType(32), 2)
             args.append(precision)
 

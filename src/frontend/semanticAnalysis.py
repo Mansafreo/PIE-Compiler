@@ -12,6 +12,81 @@ class SemanticAnalyzer(Visitor):
         self.error_set = set()
         self.current_function = None
         self.in_switch = False
+        self._register_builtin_functions()
+
+    def _register_builtin_functions(self):
+        """Register all built-in functions in the symbol table"""
+        builtins = [
+            # Type conversion functions
+            ('string_to_int', 'int', [('string', 'str')]),
+            ('string_to_float', 'float', [('string', 'str')]),
+            ('string_to_char', 'char', [('string', 'str')]),
+            ('char_to_int', 'int', [('char', 'c')]),
+            ('int_to_char', 'char', [('int', 'value')]),
+            ('int_to_float', 'float', [('int', 'value')]),
+            ('float_to_int', 'int', [('float', 'value')]),
+            
+            # Cryptography functions
+            ('caesar_cipher', 'string', [('string', 'text'), ('int', 'shift')]),
+            ('caesar_decipher', 'string', [('string', 'text'), ('int', 'shift')]),
+            ('rot13', 'string', [('string', 'text')]),
+            ('char_shift', 'string', [('string', 'text'), ('int', 'shift')]),
+            ('reverse_string', 'string', [('string', 'text')]),
+            ('xor_cipher', 'string', [('string', 'text'), ('string', 'key')]),
+            
+            # String utilities
+            ('string_to_upper', 'string', [('string', 'str')]),
+            ('string_to_lower', 'string', [('string', 'str')]),
+            ('string_trim', 'string', [('string', 'str')]),
+            ('string_substring', 'string', [('string', 'str'), ('int', 'start'), ('int', 'length')]),
+            ('string_index_of', 'int', [('string', 'haystack'), ('string', 'needle')]),
+            ('string_replace_char', 'string', [('string', 'str'), ('char', 'old'), ('char', 'new')]),
+            ('string_reverse', 'string', [('string', 'str')]),
+            ('string_count_char', 'int', [('string', 'str'), ('char', 'ch')]),
+            ('strlen', 'int', [('string', 'str')]),
+            ('string_char_at', 'char', [('string', 'str'), ('int', 'index')]),
+            ('string_split', 'string[]', [('string', 'str'), ('string', 'delimiter'), ('int', 'count')]),
+            ('string_split_to_array', 'string[]', [('string', 'str'), ('string', 'delimiter')]),
+            
+            # File I/O
+            ('file_open', 'file', [('string', 'path'), ('string', 'mode')]),
+            ('file_close', 'void', [('file', 'f')]),
+            ('file_write', 'void', [('file', 'f'), ('string', 'data')]),
+            ('file_flush', 'void', [('file', 'f')]),
+            ('file_read_all', 'string', [('file', 'f')]),
+            ('file_read_line', 'string', [('file', 'f')]),
+            
+            # Math functions
+            ('sqrt', 'float', [('float', 'x')]),
+            ('pow', 'float', [('float', 'base'), ('float', 'exp')]),
+            ('abs', 'float', [('float', 'x')]),
+            ('floor', 'float', [('float', 'x')]),
+            ('ceil', 'float', [('float', 'x')]),
+            ('round', 'float', [('float', 'x')]),
+            ('sin', 'float', [('float', 'x')]),
+            ('cos', 'float', [('float', 'x')]),
+            ('tan', 'float', [('float', 'x')]),
+            
+            # Regex
+            ('regex_compile', 'regex', [('string', 'pattern')]),
+            ('regex_match', 'int', [('regex', 'pattern'), ('string', 'str')]),
+            ('regex_free', 'void', [('regex', 'pattern')]),
+            
+            # Time functions
+            ('get_timestamp', 'int', []),
+            ('format_time', 'string', [('int', 'timestamp'), ('string', 'format')]),
+        ]
+        
+        for func_name, return_type, params in builtins:
+            param_list = [{'type': ptype, 'name': pname} for ptype, pname in params]
+            param_types = [ptype for ptype, pname in params]
+            self.symbol_table.add_symbol(
+                func_name,
+                'function',
+                params=param_list,
+                param_types=param_types,
+                return_type=return_type
+            )
 
     def add_error(self, error_msg):
         if error_msg not in self.error_set:
@@ -571,8 +646,18 @@ class SemanticAnalyzer(Visitor):
             return None
         norm_expr_type = self.type_checker._normalize_type(expr_type)
         norm_expected_type = self.type_checker._normalize_type(expected_type_name)
-        if norm_expr_type and norm_expr_type != norm_expected_type:
+        
+        # Allow automatic type conversion to string for output
+        if norm_expected_type == 'KEYWORD_STRING':
+            # Any basic type can be auto-converted to string for output
+            if norm_expr_type in ['KEYWORD_INT', 'KEYWORD_FLOAT', 'KEYWORD_CHAR', 'KEYWORD_STRING']:
+                # Valid conversion, no error
+                pass
+            elif norm_expr_type and norm_expr_type != norm_expected_type:
+                self.add_error(f"Type mismatch in output: Expression is {expr_type}, but output type is {expected_type_name}")
+        elif norm_expr_type and norm_expr_type != norm_expected_type:
             self.add_error(f"Type mismatch in output: Expression is {expr_type}, but output type is {expected_type_name}")
+        
         if node.precision:
             precision_type = self.visit(node.precision)
             if precision_type != 'KEYWORD_INT':

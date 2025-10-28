@@ -315,4 +315,3 @@ regex pattern = regex_compile("a*");  // 0 or more 'a's
 - [Regex Examples](../test_regex.pie)
 
 - [PIE Documentation](README.md)
-

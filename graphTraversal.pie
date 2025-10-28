@@ -1,0 +1,6 @@
+//This is a test file to test how well PIE can solve classic computing problems in graph traversal
+//The graphs are represented by adjascency matrices which are in turn represented as arrays in the system
+
+int a[]=[0,10,1];
+int b[]=[a];
+
