@@ -108,6 +108,16 @@ double d_array_int_avg(DArrayInt* arr) {
     return (double)sum / arr->size;
 }
 
+DArrayInt* d_array_int_copy(DArrayInt* arr) {
+    if (!arr) return NULL;
+    DArrayInt* new_arr = d_array_int_create();
+    // Copy all elements
+    for (size_t i = 0; i < arr->size; i++) {
+        d_array_int_append(new_arr, arr->data[i]);
+    }
+    return new_arr;
+}
+
 // String array functions
 DArrayString* d_array_string_create() {
     DArrayString* arr = (DArrayString*)malloc(sizeof(DArrayString));
@@ -217,6 +227,16 @@ DArrayString* d_array_string_concat(DArrayString* arr1, DArrayString* arr2) {
     return new_arr;
 }
 
+DArrayString* d_array_string_copy(DArrayString* arr) {
+    if (!arr) return NULL;
+    DArrayString* new_arr = d_array_string_create();
+    // Copy all elements
+    for (size_t i = 0; i < arr->size; i++) {
+        d_array_string_append(new_arr, arr->data[i]);
+    }
+    return new_arr;
+}
+
 DArrayFloat* d_array_float_create() {
     DArrayFloat* arr = (DArrayFloat*)malloc(sizeof(DArrayFloat));
     arr->data = (double*)malloc(sizeof(double) * 4); // Initial capacity of 4
@@ -320,6 +340,16 @@ double d_array_float_avg(DArrayFloat* arr) {
         sum += arr->data[i];
     }
     return sum / arr->size;
+}
+
+DArrayFloat* d_array_float_copy(DArrayFloat* arr) {
+    if (!arr) return NULL;
+    DArrayFloat* new_arr = d_array_float_create();
+    // Copy all elements
+    for (size_t i = 0; i < arr->size; i++) {
+        d_array_float_append(new_arr, arr->data[i]);
+    }
+    return new_arr;
 }
 
 #include <stdio.h>
@@ -430,6 +460,16 @@ DArrayChar* d_array_char_concat(DArrayChar* arr1, DArrayChar* arr2) {
     }
     for (size_t i = 0; i < arr2->size; i++) {
         d_array_char_append(new_arr, arr2->data[i]);
+    }
+    return new_arr;
+}
+
+DArrayChar* d_array_char_copy(DArrayChar* arr) {
+    if (!arr) return NULL;
+    DArrayChar* new_arr = d_array_char_create();
+    // Copy all elements
+    for (size_t i = 0; i < arr->size; i++) {
+        d_array_char_append(new_arr, arr->data[i]);
     }
     return new_arr;
 }

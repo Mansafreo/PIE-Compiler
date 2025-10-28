@@ -294,6 +294,7 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(int_type, [int_array_ptr, int_type]), name="d_array_int_indexof")
         ir.Function(self.module, ir.FunctionType(int_array_ptr, [int_array_ptr, int_array_ptr]), name="d_array_int_concat")
         ir.Function(self.module, ir.FunctionType(float_type, [int_array_ptr]), name="d_array_int_avg")
+        ir.Function(self.module, ir.FunctionType(int_array_ptr, [int_array_ptr]), name="d_array_int_copy")
         # Missing earlier: get/set for int
         ir.Function(self.module, ir.FunctionType(int_type, [int_array_ptr, int_type]), name="d_array_int_get")
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), [int_array_ptr, int_type, int_type]), name="d_array_int_set")
@@ -305,6 +306,7 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(int_type, [string_array_ptr, string_type]), name="d_array_string_contains")
         ir.Function(self.module, ir.FunctionType(int_type, [string_array_ptr, string_type]), name="d_array_string_indexof")
         ir.Function(self.module, ir.FunctionType(string_array_ptr, [string_array_ptr, string_array_ptr]), name="d_array_string_concat")
+        ir.Function(self.module, ir.FunctionType(string_array_ptr, [string_array_ptr]), name="d_array_string_copy")
         # Missing earlier: get/set for string
         ir.Function(self.module, ir.FunctionType(string_type, [string_array_ptr, int_type]), name="d_array_string_get")
         ir.Function(self.module, ir.FunctionType(ir.VoidType(), [string_array_ptr, int_type, string_type]), name="d_array_string_set")
@@ -316,6 +318,7 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(int_type, [float_array_ptr, float_type]), name="d_array_float_contains")
         ir.Function(self.module, ir.FunctionType(int_type, [float_array_ptr, float_type]), name="d_array_float_indexof")
         ir.Function(self.module, ir.FunctionType(float_type, [float_array_ptr]), name="d_array_float_avg")
+        ir.Function(self.module, ir.FunctionType(float_array_ptr, [float_array_ptr]), name="d_array_float_copy")
         # Already declared earlier in original code: get/set for float
 
         # Array creation and management functions
@@ -346,6 +349,7 @@ class LLVMCodeGenerator(Visitor):
         ir.Function(self.module, ir.FunctionType(bool_type, [char_array_ptr, char_type]), name="d_array_char_contains")
         ir.Function(self.module, ir.FunctionType(int_type, [char_array_ptr, char_type]), name="d_array_char_indexof")
         ir.Function(self.module, ir.FunctionType(char_array_ptr, [char_array_ptr, char_array_ptr]), name="d_array_char_concat")
+        ir.Function(self.module, ir.FunctionType(char_array_ptr, [char_array_ptr]), name="d_array_char_copy")
 
     def _array_runtime_func(self, base_type, operation):
         """Helper to get array runtime function names"""
@@ -420,10 +424,20 @@ class LLVMCodeGenerator(Visitor):
                                 print(f"DEBUG: About to call append with val: {val}, type: {val.type}, expected: {expected_elem_type}")
                             self.builder.call(append_func, [array_struct_ptr, val])
                     elif expr_initializer:
-                        # Handle expression initializers (like array concatenation)
-                        result_array = self.visit(expr_initializer)
-                        if result_array is not None:  # Only store if we have a result
-                            self.builder.store(result_array, self.global_vars[name])
+                        # Handle expression initializers (like array concatenation or array copy)
+                        # Check if this is an identifier (array copy)
+                        if isinstance(expr_initializer, Identifier):
+                            # Call the copy function to create a new array
+                            copy_func = self.module.get_global(f"d_array_{element_type_str}_copy")
+                            source_array_ptr = self.global_vars[expr_initializer.name]
+                            source_array = self.builder.load(source_array_ptr)
+                            new_array_ptr = self.builder.call(copy_func, [source_array])
+                            self.builder.store(new_array_ptr, self.global_vars[name])
+                        else:
+                            # Handle other expression initializers (like array concatenation)
+                            result_array = self.visit(expr_initializer)
+                            if result_array is not None:  # Only store if we have a result
+                                self.builder.store(result_array, self.global_vars[name])
             
             # Process all statements in order
             # Since we didn't process declarations in the first pass, they'll be
@@ -734,10 +748,19 @@ class LLVMCodeGenerator(Visitor):
                             if isinstance(expected_elem_type, ir.IntType) and expected_elem_type.width == 8 and isinstance(val.type, ir.PointerType):
                                 val = self.builder.load(val)
                             self.builder.call(append_func, [array_struct_ptr, val])
-                    else:  # Expression (like BinaryOp for concatenation)
-                        # Visit the expression and store the result
-                        result_array = self.visit(node.initializer)
-                        self.builder.store(result_array, ptr)
+                    else:  # Expression (like BinaryOp for concatenation or Identifier for array copy)
+                        # Check if this is an identifier (array copy)
+                        if isinstance(node.initializer, Identifier):
+                            # Call the copy function to create a new array
+                            copy_func = self._array_runtime_func(base, 'copy')
+                            source_array_ptr = self.llvm_var_table[node.initializer.name]
+                            source_array = self.builder.load(source_array_ptr)
+                            new_array_ptr = self.builder.call(copy_func, [source_array])
+                            self.builder.store(new_array_ptr, ptr)
+                        else:
+                            # Visit the expression and store the result (e.g., array concatenation)
+                            result_array = self.visit(node.initializer)
+                            self.builder.store(result_array, ptr)
                 else:
                     # Empty array
                     create_func = self._array_runtime_func(base, 'create')

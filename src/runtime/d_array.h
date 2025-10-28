@@ -21,6 +21,7 @@ int d_array_int_contains(DArrayInt* arr, int value);
 int d_array_int_indexof(DArrayInt* arr, int value);
 DArrayInt* d_array_int_concat(DArrayInt* arr1, DArrayInt* arr2);
 double d_array_int_avg(DArrayInt* arr);
+DArrayInt* d_array_int_copy(DArrayInt* arr);
 
 
 typedef struct {
@@ -40,6 +41,7 @@ char* d_array_string_pop(DArrayString* arr);
 int d_array_string_contains(DArrayString* arr, const char* value);
 int d_array_string_indexof(DArrayString* arr, const char* value);
 DArrayString* d_array_string_concat(DArrayString* arr1, DArrayString* arr2);
+DArrayString* d_array_string_copy(DArrayString* arr);
 
 typedef struct {
     char* data;
@@ -57,6 +59,7 @@ char d_array_char_pop(DArrayChar* arr);
 int d_array_char_contains(DArrayChar* arr, char value);
 int d_array_char_indexof(DArrayChar* arr, char value);
 DArrayChar* d_array_char_concat(DArrayChar* arr1, DArrayChar* arr2);
+DArrayChar* d_array_char_copy(DArrayChar* arr);
 
 typedef struct {
     double* data;
@@ -76,6 +79,7 @@ int d_array_float_contains(DArrayFloat* arr, double value);
 int d_array_float_indexof(DArrayFloat* arr, double value);
 DArrayFloat* d_array_float_concat(DArrayFloat* arr1, DArrayFloat* arr2);
 double d_array_float_avg(DArrayFloat* arr);
+DArrayFloat* d_array_float_copy(DArrayFloat* arr);
 
 void print_int_array(DArrayInt* arr);
 void print_string_array(DArrayString* arr);

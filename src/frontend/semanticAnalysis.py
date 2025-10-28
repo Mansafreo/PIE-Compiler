@@ -150,11 +150,19 @@ class SemanticAnalyzer(Visitor):
                     if not self.type_checker.is_compatible(element_type, expr_type):
                         self.add_error(f"Type mismatch in initializer for array '{node.identifier}'. Expected {element_type}, got {expr_type}")
             else:
-                # Handle expression initializer (like array concatenation)
+                # Handle expression initializer (like array concatenation or identifier)
                 expr_type = self.visit(node.initializer)
                 if expr_type == 'array':
+                    # Check if this is an identifier referring to another array
+                    if isinstance(node.initializer, Identifier):
+                        # Get the symbol info for the source array
+                        source_sym = self.symbol_table.lookup_symbol(node.initializer.name)
+                        if source_sym:
+                            source_ti = source_sym.get('typeinfo')
+                            if source_ti and source_ti.base != element_type:
+                                self.add_error(f"Type mismatch in array initialization: Cannot assign array of {source_ti.base} to array of {element_type}")
                     # For array concatenation, check that the element types match
-                    if hasattr(node.initializer, 'element_type') and node.initializer.element_type != element_type:
+                    elif hasattr(node.initializer, 'element_type') and node.initializer.element_type != element_type:
                         self.add_error(f"Type mismatch in array initialization: Cannot assign array of {node.initializer.element_type} to array of {element_type}")
                 else:
                     self.add_error(f"Invalid initializer for array '{node.identifier}'. Expected array or initializer list, got {expr_type}")
