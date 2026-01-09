@@ -37,7 +37,7 @@ def build_and_link(pie_file_path):
 def main():
     # Check if a filename is provided as a command-line argument
     if len(sys.argv) < 2:
-        print("Usage: python main.py <filename.pie>")
+        print("Usage: pie <filename.pie>")
         sys.exit(1)
 
     filename = sys.argv[1]
