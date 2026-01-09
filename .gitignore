@@ -9,3 +9,11 @@ output.ir
 output.bc
 output.0
 program
+
+pycache__/
+__pycache__/*.pyc
+.DS_Store
+.idea/
+.vscode/
+*.log
+.env
